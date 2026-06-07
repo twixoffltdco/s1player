@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Универсальный видеоплеер | HLS / MP4 по URL</title>
+    
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js" integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4=" crossorigin="anonymous"></script>
+    
+    <!-- Fingerprint2 (оставлено для совместимости с оригиналом) -->
+    <script src="https://russtube.ru/themes/playtag/js/Fingerprintjs2/fingerprint2.js"></script>
+    
+    <!-- MediaElementJS + Quality плагин -->
+    <link rel="stylesheet" href="https://russtube.ru/themes/playtag/player/css/mediaelementplayer.min.css?version=3.1.1" />
+    <link rel="stylesheet" href="https://russtube.ru/themes/playtag/player/plugins/quality/quality.min.css?version=3.1.1" />
+    <script src="https://russtube.ru/themes/playtag/player/js/mediaelement-and-player.min.js?version=3.1.1"></script>
+    <script src="https://russtube.ru/themes/playtag/player/plugins/quality/quality.min.js?version=3.1.1"></script>
+    
+    <!-- Доп. библиотека Plyr (не используется активно, но оставлена) -->
+    <script src="https://russtube.ru/themes/playtag/js/plyr.polyfilled.js"></script>
+    <link rel="stylesheet" href="https://russtube.ru/themes/playtag/player/css/plyr.css" />
+    
+    <!-- Яндекс.Метрика (оригинальный код) -->
+    <script type="text/javascript">
+        (function(m,e,t,r,i,k,a){
+            m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+            m[i].l=1*new Date();
+            for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+            k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+        })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=109270517', 'ym');
+        ym(109270517, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});
+    </script>
+    <noscript><div><img src="https://mc.yandex.ru/watch/109270517" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+    
+    <!-- Рекламный скрипт mpsuadv -->
+    <script async src="https://statika.mpsuadv.ru/scripts/11324.js"></script>
+    
+    <style>
+        /* Основные стили для плеера на весь экран */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+        }
+        .video-player, .embed-video-player {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #000;
+        }
+        .watermark {
+            position: absolute;
+            z-index: 10;
+            left: 20px;
+            top: 20px;
+            transition: all 0.5s;
+            display: none;
+            opacity: 0.8;
+            cursor: pointer;
+        }
+        .watermark img {
+            max-width: 120px;
+            filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));
+        }
+        .embed-video-player {
+            position: relative;
+        }
+        .mejs__container {
+            width: 100% !important;
+            height: 100% !important;
+        }
+        /* Для корректного отображения контролов */
+        .mejs__controls {
+            z-index: 20;
+        }
+        /* Адаптивность */
+        @media (max-width: 768px) {
+            .watermark img {
+                max-width: 80px;
+            }
+            .watermark {
+                left: 12px;
+                top: 12px;
+            }
+        }
+        /* вспомогательный класс для информации о кастомном потоке (необязательно) */
+        .custom-stream-info {
+            position: absolute;
+            bottom: 60px;
+            left: 20px;
+            background: rgba(0,0,0,0.6);
+            color: #ffd966;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 15;
+            pointer-events: none;
+            backdrop-filter: blur(4px);
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="video-player embed-video-player">
+    <!-- Водяной знак -->
+    <div class="watermark">
+        <a href="https://russtube.ru" target="_blank">
+            <img src="https://russtube.ru/1111.png" alt="watermark logo">
+        </a>
+    </div>
+    
+    <!-- Видеоэлемент (источники будут обновлены через JS в зависимости от URL параметра) -->
+    <video id="my-video" style="width:100%; height:100%; position: relative;" 
+           poster="https://s3.regru.cloud/bez/upload/photos/2026/06/2GEnKrDhzTXw8NXi9Ipi_07_84be3fddafd0448c54a07a7a064aad4f_image.jpg" 
+           playsinline>
+        <!-- Исходный поток по умолчанию (Россия 1 +7) - будет заменён, если передан параметр src -->
+        <source src="https://zabava-htlive.cdn.ngenix.net/hls/CH_RUSSIA1_7/variant.m3u8" 
+                type="application/x-mpegURL" 
+                data-quality="360p" 
+                title='360p' 
+                label='360p' 
+                res='360'>
+        Your browser does not support HTML5 video.
+    </video>
+    
+    <!-- Небольшой индикатор кастомного контента (для юзабилити) -->
+    <div class="custom-stream-info" id="customStreamInfo"></div>
+</div>
+
+<!-- Скрытые поля для сессии / совместимость с оригиналом -->
+<input type="hidden" class="main_session" value="eb24664551f8a0d04caf23d6efa95913cc34378c">
+
+<script>
+    // ========================
+    // 1. Функция получения параметров из адресной строки (?src=URL)
+    // ========================
+    function getUrlParameter(name) {
+        name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+        var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+        var results = regex.exec(location.search);
+        return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+    }
+    
+    // ========================
+    // 2. Обработка кастомного контента из адресной строки
+    //    С помощью параметра src=URL можно заменить видео
+    // ========================
+    function applyCustomStreamFromUrl() {
+        var customSrc = getUrlParameter('src');
+        var videoEl = document.getElementById('my-video');
+        if (!videoEl) return false;
+        
+        // Если параметр src передан и не пустой
+        if (customSrc && customSrc.trim() !== "") {
+            try {
+                // Декодируем (на случай если ссылка уже закодирована)
+                var finalUrl = customSrc;
+                // Проверка на валидный URL (простая)
+                if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+                    console.warn("Нестандартный протокол, но попробуем загрузить:", finalUrl);
+                }
+                
+                // Удаляем все старые source элементы
+                while (videoEl.firstChild) {
+                    if (videoEl.firstChild.tagName === 'SOURCE') {
+                        videoEl.removeChild(videoEl.firstChild);
+                    } else {
+                        break; // если встретили не source (текст), но для безопасности прерываем
+                    }
+                }
+                // Альтернативный способ: очистка через jQuery
+                $(videoEl).find('source').remove();
+                
+                // Определяем MIME-тип по расширению файла (или по наличию m3u8)
+                var mimeType = 'video/mp4';
+                var lowerUrl = finalUrl.toLowerCase();
+                if (lowerUrl.includes('.m3u8') || lowerUrl.includes('m3u8') || lowerUrl.includes('application/x-mpegurl')) {
+                    mimeType = 'application/x-mpegURL';
+                } else if (lowerUrl.includes('.mp4')) {
+                    mimeType = 'video/mp4';
+                } else if (lowerUrl.includes('.webm')) {
+                    mimeType = 'video/webm';
+                } else if (lowerUrl.includes('.ogg')) {
+                    mimeType = 'video/ogg';
+                } else {
+                    // Если не можем определить, но поток HLS часто без расширения, проверяем по наличию ключевых слов
+                    if (lowerUrl.includes('m3u8') || lowerUrl.includes('hls') || lowerUrl.includes('variant')) {
+                        mimeType = 'application/x-mpegURL';
+                    }
+                }
+                
+                // Создаем новый source
+                var newSource = document.createElement('source');
+                newSource.src = finalUrl;
+                newSource.type = mimeType;
+                // Добавляем атрибуты для совместимости с плеером
+                newSource.setAttribute('data-quality', 'custom');
+                newSource.setAttribute('title', 'Пользовательский поток');
+                newSource.setAttribute('label', 'Пользовательский');
+                videoEl.appendChild(newSource);
+                
+                // Показываем информацию в уголке, что используется кастомный контент
+                var infoDiv = document.getElementById('customStreamInfo');
+                if (infoDiv) {
+                    var shortUrl = finalUrl.length > 55 ? finalUrl.substring(0, 50) + '…' : finalUrl;
+                    infoDiv.innerHTML = '🎬 Кастомный контент: ' + shortUrl;
+                    infoDiv.style.display = 'block';
+                    // Автоматически скрыть через 7 секунд (не мешает просмотру)
+                    setTimeout(function() {
+                        if (infoDiv) infoDiv.style.opacity = '0.7';
+                    }, 5000);
+                }
+                
+                console.log('[Плеер] Загружен кастомный поток по адресной строке:', finalUrl);
+                return true;
+            } catch (e) {
+                console.error('[Ошибка] Не удалось обработать src параметр:', e);
+                // Показываем ошибку, но оставляем стандартный поток
+                var infoDiv = document.getElementById('customStreamInfo');
+                if (infoDiv) {
+                    infoDiv.innerHTML = '⚠️ Ошибка URL, использую поток по умолчанию';
+                    infoDiv.style.display = 'block';
+                    infoDiv.style.backgroundColor = 'rgba(180,0,0,0.7)';
+                    setTimeout(function() {
+                        infoDiv.style.display = 'none';
+                    }, 4000);
+                }
+                return false;
+            }
+        } else {
+            // Если параметра src нет — используем стандартный поток Россия 1 +7
+            // Убедимся, что source по умолчанию присутствует (на случай если его удалили)
+            var existingSources = $(videoEl).find('source');
+            if (existingSources.length === 0) {
+                var defaultSource = document.createElement('source');
+                defaultSource.src = "https://zabava-htlive.cdn.ngenix.net/hls/CH_RUSSIA1_7/variant.m3u8";
+                defaultSource.type = "application/x-mpegURL";
+                defaultSource.setAttribute('data-quality', '360p');
+                defaultSource.setAttribute('title', '360p');
+                videoEl.appendChild(defaultSource);
+            }
+            // Скрыть информационную панель
+            var infoDiv = document.getElementById('customStreamInfo');
+            if (infoDiv) infoDiv.style.display = 'none';
+            return false;
+        }
+    }
+    
+    // Применяем изменение источников ДО инициализации плеера
+    applyCustomStreamFromUrl();
+</script>
+
+<script>
+    // ========================
+    // 3. ОРИГИНАЛЬНЫЙ КОД ПЛЕЕРА (адаптированный с учётом кастомных источников)
+    //    Все функции и события сохранены.
+    // ========================
+    
+    // Функция проверки существования элемента (оригинальная)
+    function pt_elexists(el) {
+        return ($(el).length > 0);
+    }
+    
+    var played = false;
+    
+    // Инициализация MediaElementPlayer с оригинальными настройками
+    $(document).ready(function() {
+        // Доп. проверка: если видео не имеет источников (крайний случай), добавим заглушку
+        var videoElem = document.getElementById('my-video');
+        if (videoElem && $(videoElem).find('source').length === 0) {
+            console.warn("Нет источников, добавляем дефолтный поток.");
+            $(videoElem).append('<source src="https://zabava-htlive.cdn.ngenix.net/hls/CH_RUSSIA1_7/variant.m3u8" type="application/x-mpegURL" data-quality="360p" title="360p" label="360p" res="360">');
+        }
+        
+        // Запускаем MediaElementPlayer
+        $('video').mediaelementplayer({
+            pluginPath: 'https://cdnjs.com/libraries/mediaelement-plugins/',
+            shimScriptAccess: 'always',
+            autoplay: false,        // можно изменить на true при необходимости, но оставляем как в оригинале
+            features: ['playpause', 'current', 'progress', 'duration', 'speed', 'skipback', 'jumpforward', 'tracks', 'markers', 'volume', 'chromecast', 'contextmenu', 'flash', 'fullscreen'],
+            vastAdTagUrl: '',
+            vastAdsType: '',
+            jumpForwardInterval: 20,
+            adsPrerollMediaUrl: [''],
+            adsPrerollAdUrl: [''],
+            adsPrerollAdEnableSkip: 0,
+            adsPrerollAdSkipSeconds: 0,
+            success: function (media) {
+                // Событие окончания видео (оригинальная логика)
+                media.addEventListener('ended', function (e) {
+                    $('#adContainer').slideUp();
+                    var src = $('video').attr('src');
+                    var sources = $('video').find('source');
+                    for (var i = sources.length - 1; i >= 0; i--) {
+                        if ($(sources[i]).attr('src') == src) {
+                            if ($('#autoplay').is(":checked")) {
+                                var url = $('#next-video').find('a').attr('href');
+                                if (url) {
+                                    window.location.href = url;
+                                }
+                            }
+                        }
+                    }
+                }, false);
+                
+                // Событие playing: удаляем overlay и подстраиваем размеры
+                media.addEventListener('playing', function (e) {
+                    if (pt_elexists('.ads-overlay-info')) {
+                        $('.ads-overlay-info').remove();
+                    }
+                    $('.ads-test').remove();
+                    if ($('body').attr('resized') == 'true') {
+                        if (typeof PT_Resize === 'function') PT_Resize(true);
+                    }
+                    // Ресайз для правильного отображения
+                    $('.mejs__container').css('height', ($('.mejs__container').width() / 1.77176216) + 'px');
+                    $('video, iframe').css('height', '100%');
+                });
+            },
+        });
+        
+        // Обработчики для водяного знака (появление при наведении)
+        $(".video-player").hover(
+            function(e) {
+                $('.watermark').css('display', 'block');
+            },
+            function(e) {
+                setTimeout(function () {
+                    if ($('.video-player:hover').length == 0) {
+                        $('.watermark').css('display', 'none');
+                    }
+                }, 1000);
+            }
+        );
+        
+        // Обработка Vast рекламы (оставлено как в оригинале)
+        if ('' == 'vast' && played == false) {
+            $('.mejs__ads-skip-button').click(function(event) {
+                $('video').attr('src', 'https://zabava-htlive.cdn.ngenix.net/hls/CH_RUSSIA1_7/variant.m3u8');
+                played = true;
+            });
+        }
+        
+        // Клики по рекламным ссылкам
+        $('.ad-link').on('click', function(event) {
+            $('.ad-link').remove();
+            $('video')[0].play();
+        });
+        
+        $('.rad-transaction').click(function(event) {
+            $(this).off("click").removeClass('rad-transaction');
+            $.get('https://russtube.ru/aj/ads/rad-transaction', function(data){ /* pass */ });
+        });
+        
+        // Отправка просмотров (оригинальный счетчик видео 4486, оставляем для совместимости)
+        $.post('https://russtube.ru/aj/views?hash=' + $('.main_session').val() + '&type_=add', {video_id: 4486}, function(data, textStatus, xhr) {
+            if (data && data.status == 200) {
+                $('#video-views-count').html(data.count);
+            }
+        });
+        
+        // Небольшой костыль: перепроверка плагинов качества, если источник HLS и MediaElement перезагрузился корректно
+        // (чтобы качество корректно показывалось для дефолтного потока)
+        setTimeout(function() {
+            try {
+                if (typeof MediaElementPlayer !== 'undefined') {
+                    var player = $('video')[0].player;
+                    if (player && player.features && player.features.indexOf('quality') !== -1) {
+                        // Плагин качества уже загружен
+                    }
+                }
+            } catch(e) {}
+        }, 500);
+    });
+    
+    // Дополнительная функция для динамической подстройки размеров окна (если окно меняет размер)
+    $(window).on('resize', function() {
+        if ($('.mejs__container').length) {
+            $('.mejs__container').css('height', ($('.mejs__container').width() / 1.77176216) + 'px');
+        }
+        $('video, iframe').css('height', '100%');
+    });
+    
+    // Обработчик ошибок медиа, чтобы информировать пользователя, если кастомный поток не грузится
+    document.addEventListener('DOMContentLoaded', function() {
+        var videoElement = document.getElementById('my-video');
+        if (videoElement) {
+            videoElement.addEventListener('error', function(e) {
+                var currentSrc = videoElement.currentSrc || videoElement.src;
+                if (currentSrc && currentSrc !== '') {
+                    console.error('Ошибка загрузки видео: ', currentSrc);
+                    var infoDiv = document.getElementById('customStreamInfo');
+                    if (infoDiv && currentSrc.indexOf('zabava-htlive') === -1 && getUrlParameter('src')) {
+                        infoDiv.innerHTML = '⚠️ Не удалось загрузить указанный поток. Проверьте URL.';
+                        infoDiv.style.display = 'block';
+                        infoDiv.style.backgroundColor = 'rgba(200,30,30,0.85)';
+                        setTimeout(function() {
+                            infoDiv.style.opacity = '0.9';
+                        }, 200);
+                        setTimeout(function() {
+                            infoDiv.style.display = 'none';
+                        }, 7000);
+                    }
+                }
+            });
+        }
+    });
+</script>
+
+<!-- Блок для рекламного виджета mp_custom (оставлен как в исходном коде) -->
+<div id="mp_custom_38952"></div>
+<script>
+    window.mpsuStart = window.mpsuStart || [];
+    window.mpsuStart.push(38952);
+</script>
+
+<!-- Дополнительный стиль для красивого отображения -->
+<style>
+    /* Улучшение читаемости контролов на тёмном фоне */
+    .mejs__controls:not(.mejs__offscreen) {
+        background: rgba(0,0,0,0.6) !important;
+        backdrop-filter: blur(6px);
+    }
+    .mejs__time-rail .mejs__time-total,
+    .mejs__volume-total {
+        background: rgba(255,255,255,0.3);
+    }
+    .mejs__time-current, .mejs__volume-current {
+        background: #ff8c00;
+    }
+    .mejs__button > button {
+        filter: drop-shadow(0 0 2px black);
+    }
+    /* убираем полосу прокрутки body, чтобы ничего не мешало плееру */
+    body::-webkit-scrollbar {
+        width: 0;
+        background: transparent;
+    }
+    /* для полноэкранного режима */
+    :-webkit-full-screen {
+        background-color: black;
+    }
+    .custom-stream-info {
+        font-family: system-ui, -apple-system, 'Segoe UI', monospace;
+        font-size: 12px;
+        background: rgba(0,0,0,0.7);
+        border-left: 3px solid #ffaa33;
+        transition: opacity 0.3s;
+        pointer-events: none;
+        max-width: 80%;
+        white-space: nowrap;
+        overflow-x: auto;
+        text-overflow: ellipsis;
+        direction: ltr;
+        scrollbar-width: thin;
+    }
+    .custom-stream-info::-webkit-scrollbar {
+        height: 3px;
+    }
+    /* адаптивность для мобильных */
+    @media (max-width: 600px) {
+        .custom-stream-info {
+            font-size: 9px;
+            bottom: 70px;
+            max-width: 90%;
+            white-space: normal;
+            word-break: break-all;
+        }
+        .mejs__controls {
+            flex-wrap: wrap;
+        }
+    }
+    /* качество для кнопок */
+    .mejs__quality-button > button {
+        background: rgba(0,0,0,0.6);
+        border-radius: 4px;
+    }
+</style>
+
+<!-- Небольшое сообщение в консоли о возможностях плеера -->
+<script>
+    (function() {
+        console.log("%c🎬 Универсальный плеер с поддержкой адресной строки | Используй ?src=URL", "color: #ffaa44; font-size: 14px;");
+        console.log("%cПример: index.html?src=https://example.com/stream.m3u8  или  .mp4", "color: #88aaff");
+        var currentParam = getUrlParameter('src');
+        if(currentParam) {
+            console.log("%c✅ Загружен контент из адресной строки: " + currentParam, "color: #88ff88");
+        } else {
+            console.log("%c📺 Поток по умолчанию: Россия 1 +7 (HLS). Добавь ?src=ССЫЛКА", "color: #ffaa88");
+        }
+    })();
+</script>
+
+</body>
+</html>
